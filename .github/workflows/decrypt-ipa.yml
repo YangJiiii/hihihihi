@@ -27,15 +27,30 @@ jobs:
 
       - name: Đăng nhập Apple ID
         run: |
-          ipatool auth login \
-            --email "${{ secrets.APPLE_EMAIL }}" \
-            --password "${{ secrets.APPLE_PASSWORD }}"
+          # Nếu có APPLE_2FA_SECRET thì tự sinh mã 2FA (TOTP)
+          if [ -n "${{ secrets.APPLE_2FA_SECRET }}" ]; then
+            echo "🔐 Đang sinh mã 2FA..."
+            brew install oath-toolkit 2>/dev/null || true
+            TWOFA_CODE=$(oathtool --totp --base32 "${{ secrets.APPLE_2FA_SECRET }}")
+            ipatool auth login \
+              --non-interactive \
+              --email "${{ secrets.APPLE_EMAIL }}" \
+              --password "${{ secrets.APPLE_PASSWORD }}" \
+              --auth-code "${TWOFA_CODE}"
+          else
+            ipatool auth login \
+              --non-interactive \
+              --email "${{ secrets.APPLE_EMAIL }}" \
+              --password "${{ secrets.APPLE_PASSWORD }}"
+          fi
 
       - name: Tải & Decrypt IPA
         run: |
           mkdir -p output
           ipatool download \
+            --non-interactive \
             --bundle-identifier "${{ inputs.app_id }}" \
+            --purchase \
             --output output/app.ipa
 
       - name: Upload lên Gofile
