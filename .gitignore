@@ -1,0 +1,5 @@
+# Không push config thật lên GitHub public
+config.php
+cache/
+.DS_Store
+*.log

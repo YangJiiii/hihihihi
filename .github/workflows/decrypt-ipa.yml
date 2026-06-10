@@ -1,0 +1,72 @@
+name: Decrypt IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_id:
+        description: 'App Store App ID (ví dụ: 123456789 từ link apps.apple.com/app/xxx/id123456789)'
+        required: true
+        type: string
+      chat_id:
+        description: 'Telegram Chat ID để gửi kết quả về'
+        required: true
+        type: string
+      message_id:
+        description: 'Tin nhắn gốc để reply (tuỳ chọn)'
+        required: false
+        type: string
+
+jobs:
+  decrypt:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Cài đặt ipatool
+        run: brew install ipatool
+
+      - name: Đăng nhập Apple ID
+        run: |
+          ipatool auth login \
+            --email "${{ secrets.APPLE_EMAIL }}" \
+            --password "${{ secrets.APPLE_PASSWORD }}"
+
+      - name: Tải & Decrypt IPA
+        run: |
+          mkdir -p output
+          ipatool download \
+            --bundle-identifier "${{ inputs.app_id }}" \
+            --output output/app.ipa
+
+      - name: Upload lên Gofile
+        id: upload
+        run: |
+          FILE=$(ls output/*.ipa | head -1)
+          echo "📤 Đang upload $FILE lên Gofile..."
+          RESPONSE=$(curl -s -F "file=@${FILE}" "https://store1.gofile.io/uploadFile")
+          DOWNLOAD_URL=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['downloadPage'])")
+          echo "download_url=${DOWNLOAD_URL}" >> $GITHUB_OUTPUT
+          echo "✅ Upload xong: ${DOWNLOAD_URL}"
+
+      - name: Gửi link về Telegram cho user
+        env:
+          DOWNLOAD_URL: ${{ steps.upload.outputs.download_url }}
+        run: |
+          TEXT="ipa đã được Decrypt xong 🎉%0A%0A📦 Tải về: ${DOWNLOAD_URL}"
+          
+          curl -s -X POST \
+            "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ inputs.chat_id }}" \
+            -d "text=${TEXT}" \
+            -d "parse_mode=HTML" \
+            -d "disable_web_page_preview=true" \
+            -d "reply_to_message_id=${{ inputs.message_id }}"
+
+      - name: Gửi thông báo lỗi (nếu có)
+        if: failure()
+        run: |
+          curl -s -X POST \
+            "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ inputs.chat_id }}" \
+            -d "text=❌ Decrypt lỗi rồi, thử lại sau nha." \
+            -d "reply_to_message_id=${{ inputs.message_id }}"
