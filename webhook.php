@@ -67,11 +67,11 @@ function buildWebhookResponse(array $update, array $config): array
                 return telegramSendMessagePayload($chatId, 'Link App Store không đúng định dạng. Gửi link có dạng: https://apps.apple.com/app/xxx/id123456789', $messageId, $threadId);
             }
             try {
-                triggerGitHubWorkflow($config, $appId, (string)$chatId, (string)($messageId ?? ''));
-                return telegramSendMessagePayload($chatId, '⏳ Đang decrypt IPA cho App ID: <code>' . $appId . '</code>... Chờ tao vài phút nha.', $messageId, $threadId);
+                addToDecryptQueue($config, $appId, (string)$chatId, (string)($messageId ?? ''));
+                return telegramSendMessagePayload($chatId, '⏳ Đã nhận job decrypt App ID: <code>' . $appId . '</code>. Tao đang xử lý, chờ vài phút nha.', $messageId, $threadId);
             } catch (Throwable $error) {
-                error_log('GitHub workflow trigger failed: ' . (string)$error);
-                return telegramSendMessagePayload($chatId, '❌ Không trigger được decrypt. Kiểm tra lại github_token trong config.php.', $messageId, $threadId);
+                error_log('Queue add failed: ' . (string)$error);
+                return telegramSendMessagePayload($chatId, '❌ Lỗi khi thêm job decrypt: ' . $error->getMessage(), $messageId, $threadId);
             }
         }
         return ['ok' => true];

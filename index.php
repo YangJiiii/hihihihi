@@ -454,81 +454,79 @@ function handleGetCommand(array $config, int|string $chatId, string $link, int|s
         return;
     }
 
-    safeSendChatAction($config, $chatId, 'typing', $threadId);
-    safeSendMessage($config, $chatId, '⏳ Đang decrypt IPA cho App ID: <code>' . $appId . '</code>... Chờ tao vài phút nha.', $messageId, $threadId);
-
     try {
-        triggerGitHubWorkflow($config, $appId, (string)$chatId, (string)($messageId ?? ''));
+        addToDecryptQueue($config, $appId, (string)$chatId, (string)($messageId ?? ''));
+        safeSendMessage($config, $chatId, '⏳ Đã nhận job decrypt App ID: <code>' . $appId . '</code>. Tao đang xử lý, chờ vài phút nha.', $messageId, $threadId);
     } catch (Throwable $error) {
-        error_log('GitHub workflow trigger failed: ' . (string)$error);
-        safeSendMessage($config, $chatId, '❌ Không trigger được decrypt. Kiểm tra lại github_token trong config.php.', $messageId, $threadId);
+        error_log('Queue add failed: ' . (string)$error);
+        safeSendMessage($config, $chatId, '❌ Lỗi khi thêm job decrypt: ' . $error->getMessage(), $messageId, $threadId);
     }
 }
 
 function extractAppStoreId(string $link): ?string
 {
-    // Hỗ trợ các dạng link App Store:
-    // https://apps.apple.com/vn/app/zing-mp3/id1554463552
-    // https://apps.apple.com/app/id123456789
-    // https://apps.apple.com/app/xxx/id123456789?l=vi
-    // id123456789
-
-    // Nếu người dùng chỉ paste mỗi id
     if (preg_match('/^(\d{6,12})$/', trim($link), $m)) {
         return $m[1];
     }
-
-    // Extract id từ URL
     if (preg_match('/\/id(\d{6,12})(?:[?\/#]|$)/', $link, $m)) {
         return $m[1];
     }
-
     return null;
 }
 
-function triggerGitHubWorkflow(array $config, string $appId, string $chatId, string $messageId): void
+function addToDecryptQueue(array $config, string $appId, string $chatId, string $messageId): void
 {
-    $token = $config['github_token'] ?? '';
-    $repo = $config['github_repo'] ?? '';
-
-    if ($token === '' || $repo === '' || str_contains($token, 'xxxxxxxx')) {
-        throw new RuntimeException('Thiếu github_token hoặc github_repo trong config.php');
+    $baseUrl = rtrim(($config['site_url'] ?? ''), '/');
+    if ($baseUrl === '') {
+        throw new RuntimeException('Thiếu site_url trong config.php. Thêm dòng: \'site_url\' => \'https://ten-mien-cua-ban\'');
     }
 
-    $url = "https://api.github.com/repos/{$repo}/actions/workflows/decrypt-ipa.yml/dispatches";
-
+    $url = $baseUrl . '/queue.php?token=' . urlencode($config['webhook_secret']);
     $payload = json_encode([
-        'ref' => 'main',
-        'inputs' => [
-            'app_id' => $appId,
-            'chat_id' => $chatId,
-            'message_id' => $messageId,
-        ],
+        'app_id' => $appId,
+        'chat_id' => $chatId,
+        'message_id' => $messageId,
     ], JSON_UNESCAPED_SLASHES);
+
+    if (!function_exists('curl_init')) {
+        $ctx = stream_context_create([
+            'http' => [
+                'method' => 'POST',
+                'header' => "Content-Type: application/json\r\n",
+                'content' => $payload,
+                'timeout' => 10,
+            ],
+        ]);
+        $body = file_get_contents($url, false, $ctx);
+        if ($body === false) {
+            throw new RuntimeException('Không kết nối được tới queue.php');
+        }
+        $data = json_decode((string)$body, true);
+        if (!($data['ok'] ?? false)) {
+            throw new RuntimeException($data['error'] ?? 'Lỗi queue');
+        }
+        return;
+    }
 
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => [
-            'Authorization: Bearer ' . $token,
-            'Content-Type: application/json',
-            'User-Agent: ipsw-telegram-bot',
-            'Accept: application/vnd.github+json',
-        ],
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
         CURLOPT_POSTFIELDS => $payload,
         CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_TIMEOUT => 20,
+        CURLOPT_TIMEOUT => 15,
     ]);
-
     $body = curl_exec($ch);
     $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    $error = curl_error($ch);
     curl_close($ch);
 
-    if ($status < 200 || $status >= 300) {
-        $msg = $body ?: $error;
-        throw new RuntimeException("GitHub API HTTP {$status}: {$msg}");
+    if ($body === false || $status < 200 || $status >= 300) {
+        throw new RuntimeException("Queue HTTP {$status}");
+    }
+    $data = json_decode((string)$body, true);
+    if (!($data['ok'] ?? false)) {
+        throw new RuntimeException($data['error'] ?? 'Lỗi queue');
     }
 }
 

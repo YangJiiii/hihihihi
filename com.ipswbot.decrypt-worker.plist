@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ipswbot.decrypt-worker</string>
+
+    <key>Program</key>
+    <string>/Users/yangjiii/Documents/bot/decrypt-worker.sh</string>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/yangjiii/Documents/bot/cache/worker.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/yangjiii/Documents/bot/cache/worker-error.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/yangjiii</string>
+    </dict>
+</dict>
+</plist>
